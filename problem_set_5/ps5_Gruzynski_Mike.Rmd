@@ -1,0 +1,435 @@
+---
+title: "Problem Set 5"
+author: "Mike Gruzynski"
+output: html_document 
+---
+
+# 1. Online advertising natural experiment. 
+These are simulated data (closely, although not entirely) based on a real example, adopted from Randall Lewis’ dissertation at MIT.
+
+## Problem Setup 
+
+Imagine Yahoo! sells homepage ads to advertisers that are quasi-randomly assigned by whether the user loads the Yahoo! homepage (www.yahoo.com) on an even or odd second of the day. More specifically, the setup is as follows. On any given week, Monday through Sunday, two ad campaigns are running on Yahoo!s homepage. If a user goes to www.yahoo.com during an even second that week (e.g., Monday at 12:30:58pm), the ads for the advertiser are shown. But if the user goes to www.yahoo.com during an odd second during that week (e.g., Monday at 12:30:59), the ads for other products are shown. (If a user logs onto Yahoo! once on an even second and once on an odd second, they are shown the first of the campaigns the first time and the second of the campaigns the second time. Assignment is not persistent within users.)
+
+This natural experiment allows us to use the users who log onto Yahoo! during odd seconds/the ad impressions from odd seconds as a randomized control group for users who log onto Yahoo! during even seconds/the ad impressions from even seconds. (We will assume throughout the problem there is no effect of viewing advertiser 2s ads, from odd seconds, on purchases for advertiser 1, the product advertised on even seconds.)
+
+Imagine you are an advertiser who has purchased advertising from Yahoo! that is subject to this randomization on two occasions. Here is a link to (fake) data on 500,000 randomly selected users who visited Yahoo!'s homepage during each of your two advertising campaigns, one you conducted for product A in March and one you conducted for product B in August (~250,000 users for each of the two experiments). Each row in the dataset corresponds to a user exposed to one of these campaigns.
+
+```{r, message=FALSE}
+library(data.table)
+library(stargazer)
+
+df_1 <- fread('./data/ps5_no1.csv')
+```
+
+
+The variables in the dataset are described below:
+
+  + **product_b**: an indicator for whether the data is from your campaign for product A (in which case it is set to 0), sold beginning on March 1, or for product B, sold beginning on August 1 (in which case it is set to 1). That is, there are two experiments in this dataset, and this variable tells you which experiment the data belong to.
+  + **treatment_ad_exposures_week1**: number of ad exposures for the product being advertised during the campaign. (One can also think of this variable as number of times each user visited Yahoo! homepage on an even second during the week of the campaign.)
+  + **total_ad_exposures_week1**: number of ad exposures on the Yahoo! homepage each user had during the ad campaign, which is the sum of exposures to the treatment ads for the product being advertised (delivered on even seconds) and exposures to the control ads for unrelated products (delivered on odd seconds). (One can also think of this variable as total number of times each user visited the Yahoo! homepage during the week of the campaign.)
+  + **week0**: For the treatment product, the revenues from each user in the week prior to the launch of the advertising campaign.
+  + **week1**: For the treatment product, the revenues from each user in the week during the advertising campaign. The ad campaign ends on the last day of week 1.
+  + **week2-week10**: Revenue from each user for the treatment product sold in the weeks subsequent to the campaign. The ad campaign was not active during this time.
+
+Simplifying assumptions you should make when answering this problem:
+
+  + The effect of treatment ad exposures on purchases is linear. That is, the first exposure has the same effect as the second exposure.
+  + There is no effect of being exposed to the odd-second ads on purchases for the product being advertised on the even second.
+  + Every Yahoo! user visits the Yahoo! home page at most six times a week.
+  + You can assume that treatment ad exposures do not cause changes in future ad exposures.  That is, assume that getting a treatment ad at 9:00am doesn't cause you to be more (or less) likely to visit the Yahoo home pages on an even second that afternoon, or on subsequent days.
+
+## Questions to Answer 
+
+a. Run a crosstab of total_ad_exposures_week1 and treatment_ad_exposures_week1 to sanity check that the distribution of impressions looks as it should. Does it seem reasonable? Why does it look like this? (No computation required here, just a brief verbal response.)
+
+```{r}
+df_1$check = df_1$treatment_ad_exposures_week1/df_1$total_ad_exposures_week1
+hist(df_1$check, breaks = c(seq(-0.05, 1.05, .1)), main = "Histogram of Percentage of Treatment Views")
+```
+
+From the above histogram, it appears that the percentage of treatment views per subject is fairly symmetric. There is not a long tail or skew of the data and therefore we have reason to believe that the random assignment logic was successful and to make "apples to apples" comparisons for treatment effect information.
+
+```{r}
+library(descr)
+CrossTable(df_1$treatment_ad_exposures_week1, df_1$total_ad_exposures_week1, expected=FALSE,
+           prop.chisq=FALSE)
+```
+
+Looking at the above crosstable, the data makes sense.  There is a majority of data has 2-4 for total ad treatment and the majority of the treatment ad cases are equal to 1 and 2 (which happens to be half of the total treatment majority - so the 50% randomization seemed to work).
+
+So there seems to be more people with moderate total website visits and since it is around 50-50 odds to get control or random the treatment cases are lumped in the lower values of the treatment ad exposure data.
+
+b. Your colleague proposes the code printed below to analyze this experiment: 
+`lm(week1 ~ treatment_ad_exposures_week1, data)` You are suspicious. Run a placebo test with the prior week's purchases as the outcome and report the results. Did the placebo test succeed or fail? Why do you say so?
+
+```{r}
+lr_week1 = lm(week1 ~ treatment_ad_exposures_week1, data = df_1)
+lr_week0 = lm(week0 ~ treatment_ad_exposures_week1, data = df_1)
+
+cat("The revenues from each user in the week during the advertising campaign had a coefficient of", lr_week1$coefficients[2][[1]], "per treatment ad exposure, while the revenues from each user in the week previous to the advertising campaign had a coefficient of", lr_week0$coefficients[2][[1]], "per treatment ad exposure of each subject with a difference of", lr_week1$coefficients[2][[1]] - lr_week0$coefficients[2][[1]], "per treatment ad exposure of each subject, which is not practically significant difference.")
+```
+
+When looking at the above data, since there was only a maximum of 6 treatment_ad_exposures_week1, then the maximum difference b/w the placebo week and the treatment week was ~.22 (0.03601392 * 6) USD increase between the week0 going into week1 outcomes.
+
+Looking at the paired t-test below:
+
+```{r}
+t.test(df_1$week0, df_1$week1, paired = T)
+```
+
+We can see that there is statistical evidence to show that we fail to reject the null hypothesis that the means are different, with great confidence (p-value ~ 0.58). So the placebo test failed in seperating out the result magnitudes from the treatment result magnitudes when comparing week 0 with week 1.
+
+c. The placebo test suggests that there is something wrong with our experiment or our data analysis. We suggest looking for a problem with the data analysis.
+
+i. Do you see something that might be spoiling the randomness of the treatment variable?
+
+Yes, I see two things that could be spoiling the radomness of the treatment. The first is that there is two products in the same dataframe, product A and product B, which are from two different time periods of the year. There is no previous knowledge on what this item is, so depending on different times of the year could change the volumbe of purchases. Below I show a histogram of product B in blue, product A in yellow and overlap in a grey. We can see that there is a lot higher volume of subjects who received no treatments and those who received only treatments. The extremes (ratio of 0 or 1 of treatment percentages) could skew the results when added to product B (smears out the treatment effect).
+
+In addition, the we have no idea (for the subjects with mixed treatment and control cases) if the subject actually saw the add or not (when repeatedly coming back to the website). So the better way to study the ATE is to filter out all the user when they have an unpure treatment condition (not all treatment and not all control). That way we can at least study the subjects that only potentially saw the advertisment with the subjects that never had the opportunity to see the treatment.
+
+```{r}
+library(ggplot2)
+df_1_prod_b = df_1[df_1$product_b == 1,]
+df_1_prod_a = df_1[df_1$product_b == 0,]
+
+hist(df_1_prod_b$check, xlim=c(0,1),col='blue', border=F, 
+     main = "Blue = Product B | Yellow = Product A | Grey = Overlap b/w Product A and B",
+     xlab = "Bin of percentage of treatment received by subject")
+hist(df_1_prod_a$check, add=T, col=scales::alpha('yellow',.5), border=F)
+```
+
+ii. How can you improve your analysis to get rid of this problem?
+
+What we can do is seperate the product A from the product B and only compare subjects with no treatment cases against subjects that only received treatments. This is because we have no idea what the subject saw when both treatment and control cases occured with them, so we shall filter the dataframes to look at the differences between week 0 and week 1.
+
+Looking at the dataframe of t.test p-values between week0 and week1 revenue by subject below, we see that the only one that shows a statistical significance in difference between means is product A only with extreme cases (only treatment and only control subjects). 
+```{r}
+df_1_prod_b_onlyExtremes = df_1_prod_b[df_1_prod_b$check == 1 | df_1_prod_b$check == 0,]
+df_1_prod_a_onlyExtremes = df_1_prod_a[df_1_prod_a$check == 1 | df_1_prod_a$check == 0,]
+
+df_ttest = data.frame(
+  "Product_A" = c(t.test(df_1_prod_a$week0, df_1_prod_a$week1)$p.value,
+                  t.test(df_1_prod_a_onlyExtremes$week0, df_1_prod_a_onlyExtremes$week1)$p.value),
+  "Product_B" = c(t.test(df_1_prod_b$week0, df_1_prod_b$week1)$p.value,
+                  t.test(df_1_prod_b_onlyExtremes$week0, df_1_prod_b_onlyExtremes$week1)$p.value))
+row.names(df_ttest) = c("Filtered_by_product_full",
+                        "Filtered_by_product_only_extremes") 
+df_ttest
+```
+
+Showing the t.test for with product A and product B combine to be able to generize the experimental mechanism but with only treatment and only control subjects, we also see statistical evidence to reject the null hypothesis that the means are the same and that the treatment group has a statistically different average then the control group.
+
+```{r}
+t.test(df_1[df_1$check == 1 | df_1$check == 0,]$week0, df_1[df_1$check == 1 | df_1$check == 0,]$week1)$p.value
+```
+iii. Why does the placebo test turn out the way it does?
+
+With filtering out the subjects who received both the treatment and the control, we are able to calculate a true ATE of the experiment, instead of an ATE with varying dosages of the subjects which smear the effects of the control and treatments effects. Comparing pure treatment averages vs pure control averages.
+
+iv. What one thing needs to be done to analyze the data correctly? Please provide a brief explanation of why, not just what needs to be done.
+
+The data needs to be filtered to subjects who only got pure treatment and pure control. This is to be able to calculate a true ATE, vs an ATE with factors for people in treatment with varying degrees of dosage and compliance vs control with varying degree of dosage and compliance as well. A mpre pure way to calculate the true effect of the advertisement treatment.
+
+d./e. - d. Implement the procedure you propose from part (c), run the placebo test for the Week 0 data again, and report the results. (This placebo test should pass; if it does not, re-evaluate your strategy before wasting time proceeding.) and
+e. Now estimate the causal effect of each ad exposure on purchases during the week of the campaign itself using the same technique that passed the placebo test in part (d).
+
+```{r}
+lr_week1_onlyExtremes = lm(week1 ~ treatment_ad_exposures_week1, data = df_1[df_1$check == 1 | df_1$check == 0,])
+lr_week0_onlyExtremes = lm(week0 ~ treatment_ad_exposures_week1, data = df_1[df_1$check == 1 | df_1$check == 0,])
+
+cat("The revenues from each user in the week during the advertising campaign had a coefficient of", lr_week1_onlyExtremes$coefficients[2][[1]], "per treatment ad exposure, while the revenues from each user in the week previous to the advertising campaign had a coefficient of", lr_week0_onlyExtremes$coefficients[2][[1]], "per treatment ad exposure of each subject with a difference of", lr_week1_onlyExtremes$coefficients[2][[1]] - lr_week0_onlyExtremes$coefficients[2][[1]], "per treatment ad exposure of each subject, which is not practically significant difference.")
+```
+
+f. The colleague who proposed the specification in part (b) challenges your results -- they make the campaign look less successful. Write a paragraph that a layperson would understand about why your estimation strategy is superior and his/hers is biased.
+
+Your colleague did their analysis and the entire sample population. This includes full treatment, full control and a mixture of treatment and control specimens. For the treatment/control subset of this dataset, you have no idea if they actually saw what advertisment. Did they see all of the treament ones, control ones, a mixture of some or none at all and you have no idea which one actually sunk into the subject. Whereas, with our analysis you only have a potential of seeing only control or only treatment, so if the subject did notice the advertisment you can assume with confidence that it was the only advertisment item they saw on that page, so the calculation for the ATE is cleaner for our analysis rather than or colleagues because with their analysis you just dont know which advertisment effected the subject and if the advertisement stuck in their head.
+
+g. Estimate the causal effect of each treatment ad exposure on purchases during and after the campaign, up until week 10 (so, total purchases during weeks 1 through 10).
+
+```{r}
+df_1$total_purchase = df_1$week1 + df_1$week2 + df_1$week3 + df_1$week4 + 
+  df_1$week5 + df_1$week6 + df_1$week7 +  df_1$week8 + df_1$week9 + df_1$week10
+
+lr_1g = lm(total_purchase ~ as.factor(treatment_ad_exposures_week1), data = df_1)
+
+lr_1g_list = c(lr_1g$coefficients[2][[1]], lr_1g$coefficients[3][[1]], lr_1g$coefficients[4][[1]], 
+               lr_1g$coefficients[5][[1]], lr_1g$coefficients[6][[1]], lr_1g$coefficients[7][[1]])
+
+cat("Estimate the causal effect of each treatment ad exposure on purchases during and after the campaign:", "\n",
+    "1 Treatment Add Exposure:", round(lr_1g_list[1], 2), "USD more in purchases\n",
+    "2 Treatment Add Exposure:", round(lr_1g_list[2], 2), "USD more in purchases\n",
+    "3 Treatment Add Exposure:", round(lr_1g_list[3], 2), "USD more in purchases\n",
+    "4 Treatment Add Exposure:", round(lr_1g_list[4], 2), "USD more in purchases\n",
+    "5 Treatment Add Exposure:", round(lr_1g_list[5], 2), "USD more in purchases\n",
+    "6 Treatment Add Exposure:", round(lr_1g_list[6], 2), "USD more in purchases")
+```
+
+h. Estimate the causal effect of each treatment ad exposure on purchases only after the campaign.  That is, look at total purchases only during week 2 through week 10, inclusive.
+
+```{r}
+df_1$total_purchasewk2_10 = df_1$week2 + df_1$week3 + df_1$week4 + 
+  df_1$week5 + df_1$week6 + df_1$week7 +  df_1$week8 + df_1$week9 + df_1$week10
+
+lr_1h = lm(total_purchasewk2_10 ~ as.factor(treatment_ad_exposures_week1), data = df_1)
+
+lr_1h_list = c(lr_1h$coefficients[2][[1]], lr_1h$coefficients[3][[1]], lr_1h$coefficients[4][[1]], 
+               lr_1h$coefficients[5][[1]], lr_1h$coefficients[6][[1]], lr_1h$coefficients[7][[1]])
+
+cat("Estimate the causal effect of each treatment ad exposure on purchases only after the campaign:", "\n",
+    "1 Treatment Add Exposure:", round(lr_1h_list[1], 2), "USD more in purchases\n",
+    "2 Treatment Add Exposure:", round(lr_1h_list[2], 2), "USD more in purchases\n",
+    "3 Treatment Add Exposure:", round(lr_1h_list[3], 2), "USD more in purchases\n",
+    "4 Treatment Add Exposure:", round(lr_1h_list[4], 2), "USD more in purchases\n",
+    "5 Treatment Add Exposure:", round(lr_1h_list[5], 2), "USD more in purchases\n",
+    "6 Treatment Add Exposure:", round(lr_1h_list[6], 2), "USD more in purchases")
+```
+
+i. Tell a story that could plausibly explain the result from part (h).
+
+From part(h) we see the same trend where the more treatment ads exposed to the more purchases made by the subject which is similar to the results in part(g) but at a lower magnitude. The trend of more ads exposed to during the treatment week leads to overall more purchases is reasonable because of the ability of ads to sink in to subjects subliminal thought. The ad could have appealed to subjects memories or desires enough to make a persistent effect on the subjects. For example, whenever I see an add for REI or some outdoor company my brain goes to memories of great times I had camping/backpacking and then for the next couple of days or so I am pretty much constantly thinking about my next adventure and then I think about what new gear do I need or if there anything I need to replace from wear and tear and most likely will go to the store and purchase something. It is very plausible to say that there is a persistent effect (not as great as the treatment week), that improves total sales for those subjects in weeks that follow treatment weeks.
+
+j. Test the hypothesis that the ads for product B are more effective, in terms of producing additional revenue in week 1 only, than are the ads for product A.
+(*Hint: The easiest way to do this is to throw all of the observations into one big regression and specify that regression in such a way that it tests this hypothesis.*)
+(*Hint 2: There are a couple defensible ways to answer this question that lead to different answers. Don't stress if you think you have an approach you can defend.*)
+
+In order to answer the hypothesis that the ads for product B are more effective, I am going to compare the effect of treatment exposure of the ad (by the amount of times each subject saw it) and compare it from subjects for product a and subjects for product b. Then run some t tests to show if the differences are statistically significant or not.
+
+```{r}
+lr_1ja = lm(week1 ~ as.factor(treatment_ad_exposures_week1), data = df_1_prod_a)
+lr_1jb = lm(week1 ~ as.factor(treatment_ad_exposures_week1), data = df_1_prod_b)
+
+lr_1ja_list = c(lr_1ja$coefficients[2][[1]], lr_1ja$coefficients[3][[1]], lr_1ja$coefficients[4][[1]], 
+               lr_1ja$coefficients[5][[1]], lr_1ja$coefficients[6][[1]], lr_1ja$coefficients[7][[1]])
+lr_1jb_list = c(lr_1jb$coefficients[2][[1]], lr_1jb$coefficients[3][[1]], lr_1jb$coefficients[4][[1]], 
+               lr_1jb$coefficients[5][[1]], lr_1jb$coefficients[6][[1]], lr_1jb$coefficients[7][[1]])
+
+ttest_week1 = t.test(df_1_prod_b[df_1_prod_b$treatment_ad_exposures_week1 == 1, ]$week1, df_1_prod_a[df_1_prod_a$treatment_ad_exposures_week1 == 1, ]$week1, paired = F)
+ttest_week2 = t.test(df_1_prod_b[df_1_prod_b$treatment_ad_exposures_week1 == 2, ]$week1, df_1_prod_a[df_1_prod_a$treatment_ad_exposures_week1 == 2, ]$week1, paired = F)
+ttest_week3 = t.test(df_1_prod_b[df_1_prod_b$treatment_ad_exposures_week1 == 3, ]$week1, df_1_prod_a[df_1_prod_a$treatment_ad_exposures_week1 == 3, ]$week1, paired = F)
+ttest_week4 = t.test(df_1_prod_b[df_1_prod_b$treatment_ad_exposures_week1 == 4, ]$week1, df_1_prod_a[df_1_prod_a$treatment_ad_exposures_week1 == 4, ]$week1, paired = F)
+ttest_week5 = t.test(df_1_prod_b[df_1_prod_b$treatment_ad_exposures_week1 == 5, ]$week1, df_1_prod_a[df_1_prod_a$treatment_ad_exposures_week1 == 5, ]$week1, paired = F)
+ttest_week6 = t.test(df_1_prod_b[df_1_prod_b$treatment_ad_exposures_week1 == 6, ]$week1, df_1_prod_a[df_1_prod_a$treatment_ad_exposures_week1 == 6, ]$week1, paired = F)
+
+ttest_95left_list = c(ttest_week1$conf.int[1], ttest_week2$conf.int[1], ttest_week3$conf.int[1],
+                      ttest_week4$conf.int[1], ttest_week5$conf.int[1], ttest_week6$conf.int[1])
+ttest_95right_list = c(ttest_week1$conf.int[2], ttest_week2$conf.int[2], ttest_week3$conf.int[2],
+                      ttest_week4$conf.int[2], ttest_week5$conf.int[2], ttest_week6$conf.int[2])
+ttest_pvalue_list = c(ttest_week1$p.value, ttest_week2$p.value, ttest_week3$p.value,
+                      ttest_week4$p.value, ttest_week5$p.value, ttest_week6$p.value)
+
+df_1j = data.frame("A" = lr_1ja_list,
+                   "B" = lr_1jb_list,
+                   "c95_min" = ttest_95left_list,
+                   "c95_max" = ttest_95right_list,
+                   "pvalue" = ttest_pvalue_list)
+
+row.names(df_1j) = c("1_treatAD", "2_treatAD", "3_treatAD", 
+                     "4_treatAD", "5_treatAD", "6_treatAD")
+
+df_1j$A_vs_B = round((df_1j$A/df_1j$B - 1) * 100.0, 2)
+df_1j
+```
+
+Looking at the above dataframe, we see that in the A_vs_B (or lm(week1 ~ as.factor(treatment_ad_exposures_week1) grouped by treatment exposure levels coefficients for product A divided by lm(week1 ~ as.factor(treatment_ad_exposures_week1) grouped by treatment exposure levels coefficients for product B) column that, in fact the product A treatment exposure is higher than the product B ones at all levels of treatment exposure amounts. However, the caveat to that statement is that there appears to be one level of treatment exposure that is not statistically significantly higher for product A vs product B. The 6 treatment ad exposure one has a pvalue ~0.22 and we have reason to fail to reject the null hypothesis that the means for the two groups are equal. The other ones (treatment ad levels 1 to 5) have statistical evidence to reject the null hypothesis that the means are equal. So for the most part, yes the product A treatment ad was more effective than product B, with the exception of the very extreme case. Also, if you refer back to the histogram in problem 1i, we can see that there is a lot more sample size for product A than for product B, so that could be pulling A up in mean value of those added users had higher amount of purchases.
+
+k. You notice that the ads for product A included celebrity endorsements. How confident would you be in concluding that celebrity endorsements increase the effectiveness of advertising at stimulating immediate purchases?
+
+Well I would be hesitant to make the claim that the celebrity endorsement increased the add by that amount just because a celebrity was on it. I do not know what the ads were for product A vs product B. Product A could have been a more "sleek and sexy" advertisment for some clothing line or alcohol, where as product B could have been for something more dull like dish detergient or paper towels. I have no idea and we cannot make that claim because we do not know what the product were.
+
+There is also a time of the year issue with the study. Product A started to sell on March 1 for ten weeks and product B started on August 1 and went for 10 weeks. If the products were seasonal dependent then maybe more products were bought for product A leading up to the summer months in preparation for the summer vs preparation like for product B. I would need more information in order to start to approach this answer. All I can say is there is statistical evidence that shows product A has more sales than product B and that the more ad treatment is applied to the subject, the more sales the subject is observed doing.
+
+# 2. Vietnam Draft Lottery 
+A [famous paper](http://sites.duke.edu/niou/files/2011/06/Angrist_lifetime-earningsmall.pdf) by Angrist exploits the randomized lottery for the Vietnam draft to estimate the effect of education on wages. (*Don't worry about reading this article, it is just provided to satisfy your curiosity; you can answer the question below without referring to it. In fact, it may be easier for you not to, since he has some complications to deal with that the simple data we're giving you do not.*)
+
+## Problem Setup
+
+Angrist's idea is this: During the Vietnam era, draft numbers were determined randomly by birth date -- the army would literally randomly draw birthdays out of a hat, and those whose birthdays came up sooner were higher up on the list to be drafted first. For example, all young American men born on May 2 of a given year might have draft number 1 and be the first to be called up for service, followed by November 13 who would get draft number 2 and be second, etc. The higher-ranked (closer to 1) your draft number, the likelier it was you would be drafted.
+
+We have generated a fake version of this data for your use in this project. You can find real information (here)[https://www.sss.gov/About/History-And-Records/lotter1]. While we're defining having a high draft number as falling at 80, in reality in 1970 any number lower than 195 would have been a "high" draft number, in 1971 anything lower than 125 would have been "high". 
+
+High draft rank induced many Americans to go to college, because being a college student was an excuse to avoid the draft -- so those with higher-ranked draft numbers attempted to enroll in college for fear of being drafted, whereas those with lower-ranked draft numbers felt less pressure to enroll in college just to avoid the draft (some still attended college regardless, of course). Draft numbers therefore cause a natural experiment in education, as we now have two randomly assigned groups, with one group having higher mean levels of education, those with higher draft numbers, than another, those with lower draft numbers. (In the language of econometricians, we say the draft number is an instrument for education, or that draft number is an instrumental variable.
+
+Some simplifying assumptions:
+
++ Suppose that these data are a true random sample of IRS records and that these records measure every living American's income without error.
++ Assume that the true effect of education on income is linear in the number of years of education obtained.
++ Assume all the data points are from Americans born in a single year and we do not need to worry about cohort effects of any kind.
+
+## Questions to Answer
+
+a. Suppose that you had not run an experiment. Estimate the "effect" of each year of education on income as an observational researcher might, by just running a regression of years of education on income (in R-ish, `income ~ years_education`). What does this naive regression suggest?
+
+```{r}
+df_2 = read.csv("./data/ps5_no2.csv")
+
+lr_2a = lm(income ~ years_education, data = df_2)
+cat("By holding everything else constant for every one year increase of education there is an increase of ", lr_2a$coefficients[2][[1]], "USD in yealry salary")
+```
+
+b. Continue to suppose that we did not run the experiment, but that we saw the result that you noted in part (a). Tell a concrete story about why you don't believe that observational result tells you anything causal.
+
+We do not know what the salary would have been if the subject decided not to continue education. Is the the individual subject who is intrinsically smart who decides to continue on with education would have made more money because of a degree? This is self selection bias because if you randomly choose students and force them to continue education, they might not have income effects like a subject who wanted to learn more by themselves and force them to go to more school (where they would have already went without the experiment).
+
+c. Now, let's get to using the natural experiment. We will define having a high-ranked draft number as having a draft number of 80 or below (1-80; numbers 81-365, for the remaining 285 days of the year, can be considered low-ranked. Create a variable in your dataset indicating whether each person has a high-ranked draft number or not. Using regression, estimate the effect of having a high-ranked draft number, the dummy variable you've just created, on years of education obtained. Report the estimate and a correctly computed standard error. (*Hint: Pay special attention to calculating the correct standard errors here. They should match how the draft is conducted.)
+
+```{r}
+library(stats)
+library(multiwayvcov)
+
+df_2$high_rank = ifelse(df_2$draft_number <= 80, 1, 0)
+lr_2c_ate = lm(years_education ~ high_rank, data = df_2)
+
+lr_2c_cluster = cluster.vcov(lr_2c_ate, ~ df_2$draft_number)
+lr_2c_cluster.se <- sqrt(diag(lr_2c_cluster))
+
+cat("The effect of having a higher draft number shows a difference of:", lr_2c_ate$coefficients[2][[1]], "additional years of school with a (cluster) standard error of: ", lr_2c_cluster.se[2][[1]])
+```
+
+d. Using linear regression, estimate the effect of having a high-ranked draft number on income. Report the estimate and the correct standard error.
+
+```{r}
+library(stats)
+library(multiwayvcov)
+
+lr_2d_ate = lm(income ~ high_rank, data = df_2)
+
+lr_2d_cluster = cluster.vcov(lr_2d_ate, ~ df_2$draft_number)
+lr_2d_cluster.se <- sqrt(diag(lr_2d_cluster))
+
+cat("The effect of having a higher draft number shows a difference of:", lr_2d_ate$coefficients[2][[1]], "additional income in USD per year with a (cluster) standard error of: ", lr_2d_cluster.se[2][[1]])
+```
+
+e. Divide the estimate from part (d) by the estimate in part (c) to estimate the effect of education on income. This is an instrumental-variables estimate, in which we are looking at the clean variation in both education and income that is due to the draft status, and computing the slope of the income-education line as clean change in Y divided by clean change in X. What do the results suggest?
+
+```{r}
+effect_ed_on_income = lr_2d_ate$coefficients[2][[1]]/lr_2c_ate$coefficients[2][[1]]
+
+cat("The effect of high draft ranking on income from the change of income added due to added years of education is equal to :", effect_ed_on_income, "USD in salary per year")
+```
+
+f. Natural experiments rely crucially on the exclusion restriction assumption that the instrument (here, having a high draft rank) cannot affect the outcome (here, income) in any other way except through its effect on the endogenous variable (here, education). Give one reason this assumption may be violated -- that is, why having a high draft rank could affect individuals' income other than because it nudges them to attend school for longer.
+
+The subjects could have lost out on learning lost skills due to being drafted and going into the military rather than not being drafted which hurt the long term effects on earning for the subjects (other than skill slearned by education... i.e vocational or apprentice opportunities). In addition, there could have been added emotional instability in high draft subjects due to being drafted and going to war that could hurt the long term ability to function in society which effects the long term earning capabilities.
+
+g. Conduct a test for the presence of differential attrition by treatment condition. That is, conduct a formal test of the hypothesis that the high-ranked draft number treatment has no effect on whether we observe a person's income. (Note, that an earning of $0 *actually* means they didn't earn any money.)
+
+```{r}
+library(dplyr)
+
+df_2g = df_2 %>% group_by(draft_number) %>% summarise(number = n(), high_rank = mean(high_rank))
+lr_2g = lm(number ~ high_rank, data = df_2g)
+summary(lr_2g)
+```
+
+Lookin at the above summary of of the linear regression, we see that there is a coefficient of ~ -6.29 for the high_rank variable, meaning holding everything else constant if a high ranking draft number was observed there is on average ~ 6.29 less observation per draft lottery number group with high confidence level of its statistical value (p-vlaue ~5.13e-11). If a "high draft value" was observed there are less observation in the bucket on average pointing to maybe some attrition by treatment condition.
+
+h. Tell a concrete story about what could be leading to the result in part (g).
+
+The attrition to the long-run income study could come from the fact that if you have a lower draft number you are more likely to be drafted. If you are drafted you have more likelihood of dying than those who are not drafted in war, which leads to lower amount of sample size available for the study. The attrition most likely could have come from deaths from the Vietnam war and not being available data for observational study. 
+
+i. Tell a concrete story about how this differential attrition might bias our estimates.
+
+There is no accounting for those who parished in war. The only data is those who survived or never went to war. Since we have no way of accounting for the subjects who died, we can not capture any lost characteristics about them that may lead to varying information on average incomes. Looking below at the summary table, the potential missing information makes up for ~8% to ~18.5% of the potential missing data which is a fairly large chunk of potentially  missing data for "high ranked" draft numbers.
+
+```{r}
+summary(6.3 / df_2g[df_2g$high_rank==1,]$number)
+
+```
+
+# 3. Green and Gerber Practice Problems 
+Note, none of these require you to program anything. Instead, I'm aiming to have you think critically about these forms of designs. Have fun! 
+
+## a. Field Experiments 11.10
+
+### 11.10a
+```{r}
+ate_11.10a = 21.4 - 19.2
+cat("The ate for problem 11.10a is equal to:", ate_11.10a, "% more voter turnout for treatment")
+```
+### 11.10b
+
+The first issue I have with this question about the longer the person stayed on the line "the more effective the message was" is with the question about causality. Does the longer the message effect the amount of voter turnout, or does people more likely to vote stay on the phone longer because they are more passionate about voting then others or that type of personality is more prone to participate in voting (looking at the table it appears that as you go across the columns or longer the message, there is a trend of higher voter turnout in both phone call messages). The fact that they ran a treatment of calling about voting and a control with a phone call about recycling is very similar to a placebo design mechanism, where you smear out the heterogeneous effects with the dummy phone call vs treatment phone call procedure. Because of that it appears that the longer a person is on the phone the more effective the phone call will be in terms of boosting voter turnout. 
+ 
+## b. Field Experiments 12.3 
+(The paper is available at `./readings/Olken.2010.pdf`.)
+### 12.3a
+Describe the experimental units
+
+The experiment used 49 different villages from three different subdistricts as its subjects. The subdistricts characteristics were:
+
+1. Densily populated - Heavily Muslim (East Java)
+2. Small villages - Heavily Christian (North Sumatra)
+3. Poorer remote villages - ethnically heterogeneous (Southeast Sulawesi)
+
+Within the subdistricts, there are hamlets which are small human settlements. Hamlets are the geographic unit which most villagers interact and public goods for most villages are those that are near to roads or water. Each village receives a small budget that the village head and the independent village legislatures allocate.
+
+Each village proposes two projects: a general project proposed by whole village and one proposed by the womans group in the village. Then a forum of village leaders comes together and ranks each project based on criterion and then picks projects until funds run out. Typically the choices of which projects to propose are made by a select few (richer and more powerful members of villages), even though the meetings are "open to the public". 
+
+The change in decision making mechanism of the village is the experimental unit. The villages were randomly assigned to choose their projects by a direct election plebiscite instead (this is the treatment group) versus the process described above (this is the control group). 
+
+- 5 villages were assigned to plebiscite and 14 to control in North Sumatra
+- 3 villages were assigned to plebiscite and 7 to control in North Sumatra
+- 9 villages were assigned to plebiscite and 11 to control in North Sumatra
+
+For a total of:
+17 assigned to treatment
+32 assigned to control
+
+### 12.3b
+
+If the plebiscite method was not as common as the meeting method then the results might not be as clear for ATE calculation because of the unfamiliarity with the plebiscite method and participation might not be as high as deired to get a good vote out with the plebiscite group. Also people could ill-inform others for their own benefit which will lead to a biased (unpure) plebiscites outcome.
+
+### 12.3c
+
+The people who conducted the surveys appeared to not be blind towards the complete data set. In the footnotes of the paper, it states:
+
+The time pattern of these surveys was identical to that of the first round of the household survey (i.e., before randomization was announced in North Sumatra) and contemporaneous with randomization in East Java and Southeast Sulawesi. 
+
+So the surveyer could have known which villages were assigned to what assignment (treatment of control) in East Java and Southeast Sulawesi. This could effect the results of the survey data because the people performing the survey could have biased the results by introducing some sort of anchoring bias on questions when giving the survey to the village people they knew where assigned to a treatment or control to make the results of the survey more or less extreme than it actually would have been without the bias.
+
+### 12.3d
+
+The assumption that would be violated in this instance is the assumption of random independent selection. The independence would be less valid and there would be spillage in the experiment. The cross-village communication may effect how the experiment results may biasly change. The village elites may see how surrounding votes are going more towards infrastructure projects in poorer parts of the villages and try and manipulate voters into voting for their best interests, which will take away from the intrinsic results of the plebiscite method.
+
+We can build in experimental design in order to reduce the liklihood of this occuring. We could run all of the village experiments at once, as to not allow one village results to finish before the other villages start there process. We could also study which villages dont talk to each other and try and build randomization logic to choose the best sequence of villages in order to minimize spillage from one village to another (either by religious differences or geographical distances and constraints).
+
+### 12.3e
+
+Yes, the experiment provides evidence for increased satisfaction because more involved in the political process. The paper stats on pg. 258 of the journal paper: As seen in Table 7, the plebiscite process resulted in greater villager satisfaction across a wide variety of measures. In the plebiscite villages, villagers were more likely to report that the project was chosen in accordance with their wishes and was more likely to benefit them personally, and that they were more likely to use the project. They were also more likely to respond that the project was fair and was chosen in accordance with the "people's aspirations"
+
+Olken also mentioned some limitations in the experiment in that the experiment had limited impacts on the actual projects selected (only vote on which project to choose not which project to propose) and there was some mechanisms to undo the change in political power from the plebiscite (The evidence that there was increased lobbying behavior associated with the plebiscite suggests that this response may have been occurring). To address the first issue is to have a plebiscite vote on project proposals for the final plebiscite vote to choose a plan. The second issue is a bit trickier because it will most likely always occur when infrastructure or money is involved. You could impose penalties when lobbying to a certain size of people or promising a party or some sort of trade for a promised vote without having opposing views present in order to also share their thoughts - like a debate).
+
+### 12.3f
+
+A lot more potential for corruption. Instead of a handful of people competing for the project idea there is now more potential for greed amoungst the people within the village. Initially everyone is happy because its a new idea, its exciting and people think their voice is actually being heard. Over time the effect wears off and now there is potential for people to gang up on other people in order to tip the balance of power and money.
+
+## c. Field Experiments 12.5 
+### 12.5a
+I dont think that the effect of plate size on what they eat and how much they weigh is a convincing argument. the question said they were invited to dinner, is this one dinner, two, or even more dinners? Did the people who ran the experiment rrack what the subjects ate that day, or did they snack before or after, or track their activity levels that day. This are all important inputs to this question. The guest may only eat whatever is in front of them because they are guests and do not want to be rude by asking for more food. It just might be a function of if there is food in front of them they will eat it all and not ask for seconds because they have been invited to dinner. This study has weak causal claims in theory because of weak experimental design and no mechanisms to make this a valid audit experiment. 
+
+### 12.5b
+I would design a total day food intake requirment and tracking system in order to have a measurement with a specific percentage of each type of food for every subject (i.e meat, grains, veggies, etc). I would randomly vary different amount of total calorie intake allowed (something like ~ treatment 2000 calories and control ~ 2500 calories allowed). In addition, if the study is only only food amount on weight lose, then both treatment and control (or smaller portions and larger proportion groups) need to have similar exercise routines in order to make this experiment into a better audit experiment where we only study food amount intake on weight. Then I would track the weight per subject per week and compare the treatment and control weight lose averages to form my ATE for the experiment. 
+
+## 4. Skip in 2017
+<!--
+# 4. Other Quesitons
+## Natural Experiments in Medicine. 
+Read [this synopsis](https://newsatjama.jama.com/2015/01/14/jama-forum-an-observational-study-goes-where-randomized-clinical-trials-have-not/) of an interesting study of the effects of different diabetes drugs, sent to us by a student. (I am not expecting a long response for these. Think about communicating the necessary ideas in a few sentences or less per question.)
+
+a. What are the benefits of this study relative to a randomized controlled trial?
+b. What are the disadvantages of this study relative to a randomized controlled trial?
+c. This is a natural experiment rather than a deliberate research experiment.  Therefore, practice telling a story, consistent with the reported data, about how there might be no causal difference at all between the drugs.
+d. Describe the placebo test mentioned in the article. Does this test help to rule out the story you just told?  Why or why not?
+e. What do you think about the prospects for such observational research in medicine? Is this kind of research a complement to, or a substitute for, deliberate field experiments?
+-->
+
+## 5. Think about Treatment Effects 
+
+Throughout this course we have focused on the average treatment effect. Think back to *why* we are concerned about the average treatment effect. What is the relationship between an ATE, and some individuals' potential outcomes? Make the strongest case you can for why this is *good* measure. 
+
+Part of the reason why we like to look at the ATE is because we want to be able to better generalize (as wide as possible) a casual inference. ATE are linked to potential outcomes because we want to believe they are generalizability. If subject 1-100 are in control and subject 101_200 are in control, we want to say theoretically if the assignment were all over the place on subjects that the ATE will be around the same as the initial experiment. In other words, the reason why some is assigned to control or treatement does not directly effect the average treatment effect and our theory about causality or differences in groups can be generized and reproduceable (and hence why it is a good measure - we are all cogs in the wheel -- interchangeable at a large enough level).
+
+
+
+

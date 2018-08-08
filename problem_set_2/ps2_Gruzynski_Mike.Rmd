@@ -1,0 +1,453 @@
+---
+title: 'W241 - Problem Set 2'
+author: 'Mike Gruzynski'
+output: pdf_document
+
+---
+
+<!--
+
+Some guidelines for submitting problem sets in this course:
+
+- Please submit a PDF document rather than a Word document or a Google document.
+- Please put your name at the top of your problem set.
+- Please **bold** or *highlight* your numerical answers to make them easier to find.
+- If you'll be using `R` or `Python` code to calculate your answers, please put the code and its output directly into your Problem Set PDF document.
+- It is highly recommended, although not required, that you use the RMarkdown feature in RStudio to compose your problem set answers. RMarkdown allows you to easily intermingle analysis code and answers in one document. It is of a similar design as `jupyter` and an ipython notebook.
+- You do not need to show work for trivial calculations, but showing work is always allowed.
+- For answers that involve a narrative response, please feel free to describe the key concept directly and briefly, if you can do so, and do not feel pressure to go on at length.
+- Please ask us questions about the problem set if you get stuck. **Don't spend more than 20 minutes puzzling over what a problem means.** 
+- Please ensure that someone (us!) can compile your solution set. The best way is to use the web-hosted links we've provided. 
+--> 
+
+# 1.  FE exercise 3.6
+The Clingingsmith, Khwaja, and Kremer study discussed in section 3.5 may be be used to test the sharp null hypothesis that winning the visa lottery for the pilgrimage to Mecca had no effect on the views of Pakistani Muslims toward people from other countries. Assume that the Pakistani authorities assigned visas using complete random assignment. 
+
+* Note Eq. 2.3 in FE was used
+```{r}
+d3.6 <- read.csv("./data/Clingingsmith.2009.csv")
+#head(d3.6)
+
+ATE_q1 = mean(d3.6[d3.6$success == 1,]$views) - mean(d3.6[d3.6$success == 0,]$views)
+cat("The ATE of objective views for the data set Clingingsmith.2009.csv is: ", round(ATE_q1, digits = 2))
+```
+a. Conduct 10,000 simulated random assignments under the sharp null hypothesis. (Don't just copy the code from the async, think about how to write this yourself.) 
+* Note Eq. 2.3 in FE was used for ATE and equal amount of 0s and 1s were used for sampling function
+```{r}
+amount_randomization = nrow(d3.6) / 2
+randomize_q1 = function(amount) {
+
+  d3.6$random_success = sample(c(rep(0, amount), rep(1, amount)))
+  return (mean(d3.6[d3.6$random_success == 1,]$views) - mean(d3.6[d3.6$random_success == 0,]$views))
+  
+}
+  
+answer_list_q1a = replicate(10000, randomize_q1(amount_randomization))
+```
+
+b. How many of the simulated random assignments generate an estimated ATE that is at least as large as the actual estimate of the ATE? 
+
+```{r}
+answer_q1b = table(answer_list_q1a >= ATE_q1)[2]
+cat("The amount of simulated random assignments generate an estimated ATE at least as large as the actual estimate are: ", as.character(answer_q1b))
+```
+
+c. What is the implied one-tailed p-value? 
+
+```{r}
+plot(density(answer_list_q1a), main = "RI Density Plot to help answer q1c")
+abline(v=ATE_q1)
+
+answer_q1c = mean(answer_list_q1a >= ATE_q1)
+cat("The p-value for the two-tailed question is: ", as.character(answer_q1c))
+```
+
+d. How many of the simulated random assignments generate an estimated ATE that is at least as large *in absolute value* as the actual estimate of the ATE? 
+
+```{r}
+answer_q1d = table(abs(answer_list_q1a) >= ATE_q1)[2]
+cat("The amount of simulated random assignments generate an estimated ATE at least as large (in absolute value) as the actual estimate are: ", as.character(answer_q1d))
+
+```
+
+e. What is the implied two-tailed p-value? 
+
+```{r}
+plot(density(answer_list_q1a), main = "RI Density Plot to help answer q1e")
+abline(v=ATE_q1)
+abline(v=-ATE_q1)
+
+answer_q1e = mean(abs(answer_list_q1a) >= ATE_q1)
+cat("The p-value for the two-tailed question is: ", as.character(answer_q1e))
+```
+
+
+
+# 2.FE exercise 3.8
+Naturally occurring experiments sometimes involve what is, in effect, block random assignment. For example, Titiunik studies the effect of lotteries that determine whether state senators in TX and AR serve two-year or four-year terms in the aftermath of decennial redistricting. These lotteries are conducted within each state, and so there are effectively two distinct experiments on the effects of term length. An interesting outcome variable is the number of bills (legislative proposals) that each senator introduces during a legislative session. The table below lists the number of bills introduced by senators in both states during 2003. 
+
+If you're interested, or would like more clarification, the published version of the paper is in the repository. 
+
+```{r}
+library(foreign)
+d3.8 <- read.dta("./data/Titiunik.2010.dta")
+head(d3.8)
+```
+
+a. For each state, estimate the effect of having a two-year term on the number of bills introduced. 
+* Note eq 2.3 on page 61 in FE textbook
+```{r}
+ark_data = d3.8[d3.8$texas0_arkansas1 == 1,]
+texas_data = d3.8[d3.8$texas0_arkansas1 == 0,]
+
+ATE_texas_q2a = mean(texas_data[texas_data$term2year == 1,]$bills_introduced ) - mean(texas_data[texas_data$term2year == 0,]$bills_introduced )
+cat("The average treatment effect of having a two-year term on the number of bills introduced in Texas is:", round(ATE_texas_q2a, digits = 2), "bills passed vs a four year term Senator", "\n")
+
+ATE_ark_q2a = mean(ark_data[ark_data$term2year == 1,]$bills_introduced ) - mean(ark_data[ark_data$term2year == 0,]$bills_introduced )
+cat("The average treatment effect of having a two-year term on the number of bills introduced in Arkansas is:\n", round(ATE_ark_q2a, digits = 2), "bills passed vs a four year term Senator")
+
+```
+
+b. For each state, estimate the standard error of the estimated ATE. 
+* Note eq 3.6 on page 61 in FE textbook
+```{r}
+Y_texas_0 = texas_data[texas_data$term2year == 0,]$bills_introduced
+Y_texas_1 = texas_data[texas_data$term2year == 1,]$bills_introduced
+N_texas = nrow(texas_data)
+m_texas = nrow(texas_data[texas_data$term2year == 1,])
+# correct variance for biasness
+var_2b_texas_0 = var(Y_texas_0) * m_texas / (m_texas - 1)
+var_2b_texas_1 = var(Y_texas_1) * m_texas / (m_texas - 1)
+
+answer_2b_texas_ate_se = sqrt(var_2b_texas_0/(N_texas - m_texas) + var_2b_texas_1 / m_texas)
+cat("The standard error of the average treatment effect in Texas is:", round(answer_2b_texas_ate_se, digits = 2), "\n")
+                       
+Y_ark_0 = ark_data[ark_data$term2year == 0,]$bills_introduced
+Y_ark_1 = ark_data[ark_data$term2year == 1,]$bills_introduced
+N_ark = nrow(ark_data)
+m_ark = nrow(ark_data[ark_data$term2year == 1,])
+
+var_2b_ark_0 = var(Y_ark_0) * m_ark / (m_ark - 1)
+var_2b_ark_1 = var(Y_ark_1) * m_ark / (m_ark - 1)
+
+answer_2b_ark_ate_se = sqrt(var_2b_ark_0/(N_ark - m_ark) + var_2b_ark_1 / m_ark)
+cat("The standard error of the average treatment effect in Arkansas is:", round(answer_2b_ark_ate_se, digits = 2), "\n")
+```
+
+c. Use equation (3.10) to estimate the overall ATE for both states combined. 
+
+```{r}
+N_j_texas = nrow(texas_data)
+N_j_ark = nrow(ark_data)
+N = nrow(d3.8)
+
+answer_q2c = ATE_texas_q2a * (N_j_texas/N) + ATE_ark_q2a * (N_j_ark/N)
+cat("The average treatment effect for the combined states using eq 3.10 in FE is:", round(answer_q2c, digits = 2), "\n")
+```
+
+d. Explain why, in this study, simply pooling the data for the two states and comparing the average number of bills introduced by two-year senators to the average number of bills introduced by four-year senators leads to biased estimate of the overall ATE. 
+
+If we calculate ATE with the pooled data way (not using blocking) mechanisms, we would be performing a simple average over the data set and assuming each value has the same weight. The standard error for the pooled case is: 
+
+This value is not a valid representation of the combination of the two above blocks based on state (either Texas or Arkansas). It over esitimates Arkansas and under estimates Texas and will smear the characteristics of Arkansas and Texas equally together. This will not allow the individual states to be weighted with their true weighting (based on amount of data inside of the dataframe). This leads to a bias estimate of the overall ATE, because the ATE does not incorporate the individual states characeristics correctly with a weighted average based on total percentage of data associated with each state. The pooled ATE instead incorporates all data with the same weight allowing the skewing data to effect the answer more than if a weighted average was used to calculate the ATE.
+
+```{r}
+pooled_ate_ex = mean(d3.8[d3.8$term2year == 1,]$bills_introduced) - mean(d3.8[d3.8$term2year == 0,]$bills_introduced)
+cat("The ATE of pooled:", round(pooled_ate_ex, digits = 2), "The ATE using eq 3.12:", round(answer_q2c, digits = 2))
+```
+
+e. Insert the estimated standard errors into equation (3.12) to estimate the stand error for the overall ATE. 
+* Note using eq 3.12 from FE
+```{r}
+answer_q2e =  sqrt((answer_2b_texas_ate_se**2)  * (N_j_texas/N) + (answer_2b_ark_ate_se**2)  * (N_j_ark/N))
+cat("The estimated standard errors using eq 3.12 in FE is:", round(answer_q2e, digits = 2), "\n")
+```
+
+f. Use randomization inference to test the sharp null hypothesis that the treatment effect is zero for senators in both states. 
+
+```{r}
+texas_1_randomization = nrow(texas_data[texas_data$term2year == 1,])
+texas_0_randomization = nrow(texas_data[texas_data$term2year == 0,])
+
+ark_1_randomization = nrow(ark_data[ark_data$term2year == 1,])
+ark_0_randomization = nrow(ark_data[ark_data$term2year == 0,])
+
+
+randomize_q2 = function(amount_1, amount_0, df) {
+
+  df$random_success = sample(c(rep(0, amount_0), rep(1, amount_1)))
+  return (mean(df[df$random_success == 1,]$bills_introduced) - mean(df[df$random_success == 0,]$bills_introduced))
+  
+}
+  
+list_q2f_texas = replicate(10000, randomize_q2(texas_1_randomization, texas_0_randomization, texas_data))
+list_q2f_ark = replicate(10000, randomize_q2(ark_1_randomization, ark_0_randomization, ark_data))
+
+par(mfrow=c(1,2))
+plot(density(list_q2f_texas), col='blue', main = "Texas RI Sharp Null Test")
+abline(v=0)
+plot(density(list_q2f_ark), col='red', main = "Arkansas RI Sharp Null Test")
+abline(v=0)
+``` 
+
+g. **IN Addition:** Plot histograms for both the treatment and control groups in each state (for 4 histograms in total).
+
+```{r}
+par(mfrow=c(2,2))
+hist(texas_data[texas_data$term2year == 0,]$bills_introduced, breaks = 6, main = "Texas 2 Yr. Term Bills Introduced",
+     xlab = "Amount of Bills Introduced Bin")
+hist(texas_data[texas_data$term2year == 1,]$bills_introduced, breaks = 6, main = "Texas 4 Yr. Term Bills Introduced",
+     xlab = "Amount of Bills Introduced Bin")
+hist(ark_data[ark_data$term2year == 0,]$bills_introduced, breaks = 6, main = "Arkansas 2 Yr. Term Bills Introduced",
+     xlab = "Amount of Bills Introduced Bin")
+hist(ark_data[ark_data$term2year == 1,]$bills_introduced, breaks = 6, main = "Arkansas 4 Yr. Term Bills Introduced",
+     xlab = "Amount of Bills Introduced Bin")
+```
+
+# 3. FE exercise 3.11
+Use the data in table 3.3 to simulate cluster randomized assignment. (*Notes: (a) Assume 3 clusters in treatment and 4 in control; and (b) When Gerber and Green say ``simulate'', they do not mean ``run simulations with R code'', but rather, in a casual sense ``take a look at what happens if you do this this way.'' There is no randomization inference necessary to complete this problem.*)
+
+
+```{r}
+## load data 
+d <- read.csv("./data/ggChapter3.csv")
+d
+```
+
+a. Suppose the clusters are formed by grouping observations {1,2}, {3,4}, {5,6}, ... , {13,14}. Use equation (3.22) to calculate the standard error assuming half of the clusters are randomly assigned to treatment. 
+
+
+```{r} 
+q3a_control_list = c()
+q3a_treatment_list = c()
+
+itr = 1
+while (itr < nrow(d)){
+  control_temp = (d[['Y']][[itr]] + d[['Y']][[itr + 1]])/2
+  q3a_control_list = c(q3a_control_list, control_temp)
+  treatment_temp = (d[['D']][[itr]] + d[['D']][[itr + 1]])/2
+  q3a_treatment_list = c(q3a_treatment_list, treatment_temp)
+  
+  itr = itr + 2
+  
+}
+
+var_Y_q3a = var(q3a_control_list)
+var_D_q3a = var(q3a_treatment_list)
+cov_q3a = cov(q3a_treatment_list, q3a_control_list)
+
+SE_q3a = sqrt((1/6) * (((8 * var_Y_q3a) / 6) + ((6 * var_D_q3a) / 8) + 2 * cov_q3a))
+
+cat("The standard error calculated for the cluster formation explained in question 3a is:", SE_q3a)
+```
+
+
+
+b. Suppose that clusters are instead formed by grouping observations {1,14}, {2,13}, {3,12}, ... , {7,8}. Use equation (3.22) to calculate the standard error assuming half of the clusters are randomly assigned to treatment. 
+
+```{r} 
+q3b_control_list = c()
+q3b_treatment_list = c()
+
+itr = 1
+while (itr < nrow(d)){
+  control_temp = (d[['Y']][[itr]] + d[['Y']][[nrow(d) - itr + 1]])/2
+  q3b_control_list = c(q3b_control_list, control_temp)
+  treatment_temp = (d[['D']][[itr]] + d[['D']][[nrow(d) - itr + 1]])/2
+  q3b_treatment_list = c(q3b_treatment_list, treatment_temp)
+  
+  itr = itr + 2
+  
+}
+
+var_Y_q3b = var(q3b_control_list)
+var_D_q3b = var(q3b_treatment_list)
+cov_q3b = cov(q3b_treatment_list, q3b_control_list)
+
+SE_q3b = sqrt((1/6) * (((8 * var_Y_q3b) / 6) + ((6 * var_D_q3b) / 8) + 2 * cov_q3b))
+cat("The standard error calculated for the cluster formation explained in question 3b is:", SE_q3b)
+``` 
+
+c. Why do the two methods of forming clusters lead to different standard errors? What are the implications for the design of cluster randomized experiments? 
+
+The method in question 3a (cluster 1/2, 3/4, .... 13/14) clusters values very similar in value with each other. This means that cluster 1 is similar to 2 and 13 is similar to 14, however 1 is not similar to 14. The method in question 3b (cluster 1/14, 2/13, .... 7/8) clusters values that are not similar to each other (not like in 3a). This will lead to question 3a cluster to have high variation in averages due to cluster similarities and the cluster in 3b will have lowe variance within the clustering This can be shown in histograms below (3a clusters are more divided than 3b clusters:
+
+```{r}
+par(mfrow=c(2,2))
+hist(q3a_control_list, main = "Control Avg in cluster 3a assignment", xlab = "Bin of Averages")
+hist(q3a_treatment_list, main = "Treatment Avg in cluster 3a assignment", xlab = "Bin of Averages")
+hist(q3b_control_list, main = "Control Avg in cluster 3b assignment", xlab = "Bin of Averages")
+hist(q3b_treatment_list, main = "Treatment Avg in cluster 3b assignment", xlab = "Bin of Averages")
+```
+
+This is an important concept to consider when performing cluster desing. If you do not consider the ranges and mode shapes of the output, you could wind up with clustering that leads to very high standard error and non-precise confidence intervals, when there are potential standard error values that are much lower if the clustering was thought out better and a more ideal candidate was chosen. 
+
+# 4. More Practice #1
+You are an employee of a newspaper and are planning an experiment to demonstrate to Apple that online advertising on your website causes people to buy iPhones. Each site visitor shown the ad campaign is exposed to $0.10 worth of advertising for iPhones. (Assume all users could see ads.) There are 1,000,000 users available to be shown ads on your newspaper's website during the one week campaign. 
+
+Apple indicates that they make a profit of $100 every time an iPhone sells and that 0.5% of visitors to your newspaper's website buy an iPhone in a given week in general, in the absence of any advertising.
+
+a. By how much does the ad campaign need to increase the probability of purchase in order to be "worth it"" and a positive ROI (supposing there are no long-run effects and all the effects are measured within that week)?
+
+```{r}
+amount_customers = 1000000.0
+percent_purchase_no_advertisement = 0.005
+profit_per_phone = 100.0
+
+profit_with_no_marketing = amount_customers * percent_purchase_no_advertisement * profit_per_phone
+# dollars per customer
+cost_of_advertisement = 0.1
+new_profit_needed_with_advertisement = profit_with_no_marketing + cost_of_advertisement * amount_customers
+
+# amount_customers * (percent_purchase_no_advertisement + x) * profit_per_phone = new_profit_needed_with_advertisement
+answer_q5a = new_profit_needed_with_advertisement / (amount_customers * profit_per_phone) - percent_purchase_no_advertisement
+cat("The additional percentage needed of customers who purchase iphones need an increase greater than:", answer_q5a, "or\n", answer_q5a * 100, "%, in order to have a positive ROI (or a total customer purchase percentage greater than 0.6%)")
+```
+
+b. Assume the measured effect is 0.2 percentage points. If users are split 50:50 between the treatment group (exposed to iPhone ads) and control group (exposed to unrelated advertising or nothing; something you can assume has no effect), what will be the confidence interval of your estimate on whether people purchase the phone?
+
+```{r}
+q5b_N_1 = 0.5 * amount_customers
+q5b_N_0 = 0.5 * amount_customers
+TE_q5b = 0.002
+percent_purchase_with_advertisement = TE_q5b + percent_purchase_no_advertisement
+q5b_x_1 = q5b_N_1 * percent_purchase_with_advertisement
+q5b_x_0 = q5b_N_1 * percent_purchase_no_advertisement
+q5b_p = (q5b_x_1 + q5b_x_0)/(q5b_N_1 + q5b_N_0)
+
+q5b_SE = sqrt(q5b_p * (1-q5b_p) * (1/q5b_N_1 + 1/q5b_N_0))
+
+q5b_CI_upper = TE_q5b + percent_purchase_no_advertisement + 1.96 * q5b_SE 
+q5b_CI_lower = TE_q5b + percent_purchase_no_advertisement - 1.96 * q5b_SE
+
+cat("The 95% confidence interval for the estimate on whether people purchase the phone is: \n [", q5b_CI_lower, ",", q5b_CI_upper, "]")
+```
+
+  + **Note:** The standard error for a two-sample proportion test is $\sqrt{p(1-p)*(\frac{1}{n_{1}}+\frac{1}{n_{2}})}$ where $p=\frac{x_{1}+x_{2}}{n_{1}+n_{2}}$, where $x$ and $n$ refer to the number of "successes" (here, purchases) over the number of "trials" (here, site visits). The length of each tail of a 95% confidence interval is calculated by multiplying the standard error by 1.96.
+  
+c. Is this confidence interval precise enough that you would recommend running this experiment? Why or why not?
+
+Yes, the confidence interval is precise enough to recommend running this experiment. To have positive ROI for this experiment, we need at least .6% of customers buying iphones. The confidence interval show us (at a 95% confidence level) that the lower bound of the experiment is .67% (which is larger than .6%), meaning if this experiment was ran multiple times, we would expect 95% of the result parameters (mean value of amount of customers purchasing iphones) to be within the ranges shown above in 5b. The ranges are precise enough to have confidence in running the experiment. 
+
+
+d. Your boss at the newspaper, worried about potential loss of revenue, says he is not willing to hold back a control group any larger than 1% of users. What would be the width of the confidence interval for this experiment if only 1% of users were placed in the control group?
+
+```{r}
+q5d_N_1 = 0.99 * amount_customers
+q5d_N_0 = 0.01 * amount_customers
+TE_q5d = 0.002
+percent_purchase_with_advertisement = TE_q5d + percent_purchase_no_advertisement
+
+q5d_x_1 = q5d_N_1 * percent_purchase_with_advertisement
+q5d_x_0 = q5d_N_0 * percent_purchase_no_advertisement
+q5d_p = (q5d_x_1 + q5d_x_0)/(q5d_N_1 + q5d_N_0)
+q5d_SE = sqrt(q5d_p * (1-q5d_p) * (1/q5d_N_1 + 1/q5d_N_0))
+
+q5d_CI_upper = percent_purchase_no_advertisement + TE_q5d + 1.96 * q5d_SE 
+q5d_CI_lower = percent_purchase_no_advertisement + TE_q5d - 1.96 * q5d_SE
+
+q4d_CI_width = q5d_CI_upper - q5d_CI_lower
+cat("The 95% confidence interval width for the estimate on whether people purchase the phone is:", q4d_CI_width)
+```
+
+
+# 5. More Practice #2
+Here you will find a set of data from an auction experiment by John List and David Lucking-Reiley ([2000](https://drive.google.com/file/d/0BxwM1dZBYvxBNThsWmFsY1AyNEE/view?usp=sharing)).  
+
+```{r}
+d2 <- read.csv("./data/listData.csv")
+head(d2)
+```
+
+In this experiment, the experimenters invited consumers at a sports card trading show to bid against one other bidder for a pair trading cards.  We abstract from the multi-unit-auction details here, and simply state that the treatment auction format was theoretically predicted to produce lower bids than the control auction format.  We provide you a relevant subset of data from the experiment.
+
+a. Compute a 95% confidence interval for the difference between the treatment mean and the control mean, using analytic formulas for a two-sample t-test from your earlier statistics course. 
+
+```{r}
+group_1 = d2[d2$uniform_price_auction == 0,]
+group_2 = d2[d2$uniform_price_auction == 1,]
+
+N_1 = nrow(group_1)
+N_2 = nrow(group_2)
+
+s_dm = sqrt(var(group_1$bid)/N_1 + var(group_2$bid)/N_2)
+mean_difference_in_treatment = mean(group_2$bid) - mean(group_1$bid)
+
+cat("The mean difference in means between treatment and control is:", round(mean_difference_in_treatment, 3), "with standard error of:", round(s_dm, 3), "\n")
+
+confidence_interval_95_plus = mean(group_2$bid) - mean(group_1$bid) + 1.96 * s_dm
+confidence_interval_95_minus = mean(group_2$bid) - mean(group_1$bid) - 1.96 * s_dm
+
+cat("The 95% confidence interval for the difference between the treatment mean and the control mean is: [", confidence_interval_95_minus, ",", confidence_interval_95_plus, "]")
+```
+
+b. In plain language, what does this confidence interval mean?
+
+```{r}
+cat("A 95% confidence interval means that we would expect that 95% of the time the population parameter (mean differences in treatment and control for amount bids) will be in between", round(confidence_interval_95_minus , 2), "and", round(confidence_interval_95_plus , 2))
+```
+
+c. Regression on a binary treatment variable turns out to give one the same answer as the standard analytic formula you just used.  Demonstrate this by regressing the bid on a binary variable equal to 0 for the control auction and 1 for the treatment auction.
+
+```{r}
+q5_lm = lm(formula = bid ~ as.factor(uniform_price_auction), data = d2)
+
+summary(q5_lm)
+
+cat("The coefficient for the dummy variable for treatment or control switch:", round(q5_lm$coefficients[2], 3), "is the same as the mean difference calculated above in question 5a along with the same value for the standard error:", round(summary(q5_lm)$coefficients[, 2][[2]], 3))
+```
+
+d. Calculate the 95% confidence interval you get from the regression.
+
+```{r}
+reg_confidence_interval_95_plus = q5_lm$coefficients[2] + 1.96 * summary(q5_lm)$coefficients[, 2][[2]]
+reg_confidence_interval_95_minus = q5_lm$coefficients[2] - 1.96 * summary(q5_lm)$coefficients[, 2][[2]]
+
+cat("The 95% confidence interval calculated from regression statistics is: [", round(reg_confidence_interval_95_minus , 2), ",", round(reg_confidence_interval_95_plus , 2), "]")
+```
+
+e. On to p-values. What p-value does the regression report? Note: please use two-tailed tests for the entire problem.
+
+```{r}
+p_value_regression = summary(q5_lm)$coefficients[, 4][[2]]
+cat("The p-value calculated on the dummy variable of control/treatment switch variable:", p_value_regression)
+```
+
+f. Now compute the same p-value using randomization inference.
+
+```{r}
+
+randomize_q5 = function(amount_1, amount_0, df) {
+
+  df$random_success = sample(c(rep(0, amount_0), rep(1, amount_1)))
+  return (mean(df[df$random_success == 1,]$bid) - mean(df[df$random_success == 0,]$bid))
+  
+}
+
+list_q5f = replicate(10000, randomize_q5(N_1, N_2, d2))
+
+plot(density(list_q5f), col='blue', main = "P-Value From RI Sharp Null Test")
+abline(v=mean_difference_in_treatment)
+abline(v=-mean_difference_in_treatment)
+
+
+answer_q5f = mean(list_q5f <= mean_difference_in_treatment | list_q5f >= -mean_difference_in_treatment)
+cat("The p-value for the RI p-value calculation question is: ", answer_q5f)
+```
+
+g. Compute the same p-value again using analytic formulas for a two-sample t-test from your earlier statistics course. (Also see part (a).)
+
+```{r}
+t_statistic = mean_difference_in_treatment/s_dm
+p_value_tstatistic = 2 * pt(t_statistic, N_1 + N_2 - 2)
+cat("The p-value for the two-sample t-test calculation question is: ", p_value_tstatistic)
+
+```
+
+h. Compare the two p-values in parts (e) and (f). Are they much different? Why or why not? How might your answer to this question change if the sample size were different?
+
+The values are very close in value. the only difference is that the p-value created from regression will always be the same value (if the same data is used). It is an exact value off of a t-distribution that is symmetric about its symmetry line, so two-tailed test will always equal one tail test \* 2. The answer in question 5f is based off of random inference. This value will be different based on the random assignment and the amount of replications. The distribution curve is also not-symmetric, so two-tailed test will probably not equal one tail test \* 2. This is because of the nature of random assignment and sample size. If you want the random assignment to be more precise around the p-value, you would need to greatly increase the amount of replications of the RI mechanism in order to approximate the t-distribution curve more theoretically and smoother.
+
+If the sample size were smaller, the calculated p-value will have a large range of potential outcomes. As the sampe size increases, the differences in means distribution will be approximatley (more) normal based on the CLT. Couple the sample size with more replications and theoretical t-distribution will be better approximated.
+
+
